@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ovet SMS: who owns minting, sending, scheduling, and overuse</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        fontFamily: "IBM Plex Sans, ui-sans-serif, system-ui, sans-serif",
+        fontSize: "14px",
+        primaryColor: "#e8f1ee",
+        primaryTextColor: "#1c2421",
+        primaryBorderColor: "#2f5d50",
+        lineColor: "#3d4a45",
+        secondaryColor: "#f4efe6",
+        tertiaryColor: "#f7f4ee",
+        noteBkgColor: "#fff8e8",
+        noteBorderColor: "#c4a35a",
+      },
+    });
+  </script>
+  <style>
+    :root {
+      --ink: #1c2421;
+      --muted: #5c6863;
+      --line: #d7d1c4;
+      --paper: #f7f4ee;
+      --card: #fffcf7;
+      --ovet: #2f5d50;
+      --clerk: #3b4d8a;
+      --telnyx: #8a3d2a;
+      --convex: #4a3d6b;
+      --warn: #8a5a12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 16px/1.5 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 0.5rem; }
+    h2 { font-size: 1.2rem; margin: 2.25rem 0 0.75rem; border-top: 1px solid var(--line); padding-top: 1.5rem; }
+    h3 { font-size: 1rem; margin: 1.25rem 0 0.4rem; }
+    p, li { color: var(--ink); }
+    .lede { font-size: 1.05rem; color: var(--muted); max-width: 46rem; }
+    .stamp { font-size: 0.8rem; color: var(--muted); margin-bottom: 1.5rem; }
+    .grid { display: grid; gap: 0.75rem; }
+    @media (min-width: 800px) { .grid.four { grid-template-columns: repeat(4, 1fr); } .grid.two { grid-template-columns: 1fr 1fr; } }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.9rem 1rem;
+    }
+    .card h3 { margin-top: 0; }
+    .card.ovet { border-top: 4px solid var(--ovet); }
+    .card.clerk { border-top: 4px solid var(--clerk); }
+    .card.telnyx { border-top: 4px solid var(--telnyx); }
+    .card.convex { border-top: 4px solid var(--convex); }
+    .who { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.92rem; background: var(--card); }
+    th, td { text-align: left; vertical-align: top; padding: 0.55rem 0.65rem; border-bottom: 1px solid var(--line); }
+    th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+    .yes { color: var(--ovet); font-weight: 600; }
+    .no { color: var(--telnyx); font-weight: 600; }
+    .maybe { color: var(--warn); font-weight: 600; }
+    code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.86em; background: #efe9dc; padding: 0.05em 0.3em; border-radius: 3px; }
+    .diagram {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      margin: 0.75rem 0 1rem;
+    }
+    .note {
+      background: #fff8e8;
+      border-left: 4px solid #c4a35a;
+      padding: 0.75rem 1rem;
+      margin: 1rem 0;
+    }
+    ul.tight { margin: 0.3rem 0 0; padding-left: 1.1rem; }
+    footer { margin-top: 2.5rem; font-size: 0.8rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+  <p class="stamp">Artifact · 2026-09-29 · development clinic path · no live Telnyx/Clerk quota read</p>
+  <h1>Who owns minting, sending, scheduling, and overuse</h1>
+  <p class="lede">
+    Clerk cannot own the login-handle ceilings of 5/min per code and 600/min global
+    because guesses and spent handles return <code>null</code> before Clerk is called.
+    Ovet owns clinic policy and any traffic a vendor never sees. Clerk and Telnyx own
+    remaining capacity on the calls they actually receive. Convex is the clock and the
+    bucket runtime — it does not choose the numbers.
+  </p>
+
+  <div class="grid four">
+    <article class="card ovet">
+      <p class="who">Ovet / Convex app</p>
+      <h3>Policy and unseen traffic</h3>
+      <ul class="tight">
+        <li>Consent, reservation, clinic window</li>
+        <li>Handle issue / claim / release</li>
+        <li>Guessing bounds 5 and 600</li>
+        <li>Ten-attempt budget, follow-up tasks</li>
+      </ul>
+    </article>
+    <article class="card clerk">
+      <p class="who">Clerk</p>
+      <h3>Identity, not SMS</h3>
+      <ul class="tight">
+        <li>Parent account find/create at send</li>
+        <li>Sign-in token only after a valid claim</li>
+        <li>BAPI 100/10s dev, 1000/10s prod</li>
+        <li>FAPI sign-in 5/10s after the ticket exists</li>
+      </ul>
+    </article>
+    <article class="card telnyx">
+      <p class="who">Telnyx</p>
+      <h3>Wire and carrier</h3>
+      <ul class="tight">
+        <li>Accept one send; <code>sent</code> means acceptance</li>
+        <li>Long code ~0.1 msg/s; queue then <code>40318</code></li>
+        <li>Optional daily spend → <code>429</code> + <code>40333</code></li>
+        <li>STOP is provider withdrawal, not Ovet consent</li>
+      </ul>
+    </article>
+    <article class="card convex">
+      <p class="who">Convex runtime</p>
+      <h3>When work runs</h3>
+      <ul class="tight">
+        <li><code>scheduler.runAt</code> invitations / reminders</li>
+        <li>Workpool: booking SMS + expiry</li>
+        <li>Rate limiter: local buckets</li>
+        <li>Built-in crons: purge / sweep, not 18:00</li>
+      </ul>
+    </article>
+  </div>
+
+  <h2>1. Two processes, two limit planes</h2>
+  <p>
+    Minting a ticket and sending an SMS share a visit, but they are limited by
+    different owners. Mixing them produces coincident numbers (Convex 600 vs Clerk
+    600/min) that look aligned and are not.
+  </p>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart LR
+  subgraph clinic["Clinic staff"]
+    Book["Book / pending"]
+  end
+  subgraph ovetSend["Ovet send plane"]
+    Consent["Consent + reserve"]
+    When["When: invitationTime / window"]
+    Clock["How: runAt or Workpool"]
+    ClerkUser["Clerk: find or create parent"]
+    Handle["Issue smsLoginCodes handle"]
+    Telnyx["Telnyx POST /messages"]
+  end
+  subgraph ovetOpen["Ovet open plane"]
+    Redeem["Public redeem"]
+    RL["Rate limiter 5 + 600"]
+    Claim["Claim handle or null"]
+    Mint["Clerk: sign_in_tokens"]
+    FAPI["Parent FAPI ticket sign-in"]
+  end
+  Book --> Consent --> When --> Clock
+  Clock --> ClerkUser --> Handle --> Telnyx
+  Telnyx -.->|"SMS fragment #t=handle"| Redeem
+  Redeem --> RL --> Claim
+  Claim -->|"valid unspent"| Mint --> FAPI
+  Claim -->|"guess / spent / expired"| Null["null — Clerk never called"]
+    </pre>
+  </div>
+
+  <h2>2. Why Clerk cannot own 5 / 600</h2>
+  <p>
+    <code>loginCodes.redeem</code> is public and unauthenticated. <code>claim</code>
+    takes a Convex rate-limiter token, then looks up the handle. Only a live,
+    unclaimed, unexpired row continues to <code>parentSignInToken</code>.
+  </p>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+  participant Phone as Parent browser
+  participant Redeem as loginCodes.redeem
+  participant RL as Convex rateLimiter
+  participant DB as smsLoginCodes
+  participant Clerk as Clerk BAPI
+  Phone->>Redeem: code from URL fragment
+  Redeem->>RL: loginCodes 600/min global
+  Redeem->>RL: loginCode 5/min keyed by code
+  alt bucket empty
+    RL-->>Phone: throws (Convex overuse)
+  else bucket ok
+    Redeem->>DB: lookup by_code
+    alt missing / claimed / expired
+      DB-->>Phone: null
+      Note over Clerk: Clerk never sees this
+    else valid handle
+      DB->>DB: claimedAt = now
+      Redeem->>Clerk: POST /sign_in_tokens
+      alt 2xx
+        Clerk-->>Phone: 120s ticket
+      else 429 or other error
+        Clerk-->>Redeem: swallowed as unavailable
+        Redeem->>DB: release if still unexpired
+        Redeem-->>Phone: null (today looks like expired)
+      end
+    end
+  end
+    </pre>
+  </div>
+  <div class="note">
+    Clerk rate limits apply only to requests Clerk receives. A guessing campaign,
+    a double-open of a spent handle, and an expired handle are Ovet database
+    events. Waiting for Clerk <code>429</code> on those paths waits forever.
+    Clerk FAPI “5 sign-in creations / 10s” is also the wrong layer: it runs after
+    a ticket already exists, on the Parent app, not on handle guesses.
+  </div>
+
+  <h2>3. What Ovet should own</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Surface</th>
+        <th>Ovet owns</th>
+        <th>Vendor owns</th>
+        <th>Who picks the number</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Guessing a handle</td>
+        <td>Per-code and global Convex buckets; claim-before-lookup</td>
+        <td>Nothing — Clerk is not called</td>
+        <td><strong>Ovet.</strong> 5 is a retry ceiling for one SMS. 600 is a deployment-wide unauthenticated redeem ceiling. Do not copy Clerk’s table.</td>
+      </tr>
+      <tr>
+        <td>Successful mint</td>
+        <td>120s ticket, single-use handle, release on Clerk failure</td>
+        <td>Clerk BAPI remaining + <code>Retry-After</code></td>
+        <td>Ovet owns ticket lifetime. Clerk owns whether this mint is accepted. Classify Clerk 429 like Telnyx; do not let it look like “expired”.</td>
+      </tr>
+      <tr>
+        <td>Staff invitation create</td>
+        <td><code>parentInvitations</code> 10/min per org</td>
+        <td>Clerk user lookup/create; Telnyx 0.1 MPS on the long code</td>
+        <td>Ovet should stay at clinic scale. Align the <em>send</em> burst with Telnyx throughput, not with Clerk 600/min. Clerk 429 is the backstop on account APIs.</td>
+      </tr>
+      <tr>
+        <td>When to send</td>
+        <td>18:00 invitation, 07:00–21:00 window, imminent &lt; 6h, contact cutoff</td>
+        <td>Neither Clerk nor Telnyx scheduled-send</td>
+        <td><strong>Ovet / clinic settings.</strong> Convex <code>runAt</code> fires that instant. Crons do not own 18:00.</td>
+      </tr>
+      <tr>
+        <td>Retry after a bad send</td>
+        <td>Max 10 attempts, jittered backoff, clinic task when unknown</td>
+        <td>Telnyx <code>Retry-After</code>, <code>40333</code> spend, queue</td>
+        <td>Ovet owns the budget. Telnyx delay is a floor inside that budget, capped at 1 hour in <code>telnyx.ts</code>.</td>
+      </tr>
+      <tr>
+        <td>Consent / STOP</td>
+        <td>Visit grant, permission generation, withdrawal pages</td>
+        <td>Provider STOP/START on the sender</td>
+        <td>Ovet consent is never restored by Telnyx START. Two different permissions.</td>
+      </tr>
+      <tr>
+        <td>Spend / flood</td>
+        <td>Reservation + org invitation bucket + ten-attempt cap</td>
+        <td>Profile <code>daily_spend_limit</code> if enabled (not live-read here)</td>
+        <td>Ops may set a Telnyx dollar cap. That is a fuse, not clinic policy.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>4. How to align the numbers</h2>
+  <div class="grid two">
+    <article class="card">
+      <h3>Do</h3>
+      <ul class="tight">
+        <li>Keep a local Convex bound on every unauthenticated entry (redeem, withdrawal).</li>
+        <li>Treat vendor <code>429</code> + <code>Retry-After</code> as remaining capacity on <em>that</em> call.</li>
+        <li>Size staff send rate for one long code (~1 SMS / 10s default) when many invitations share 18:00.</li>
+        <li>Release an unexpired handle if Clerk mint fails, and tell the parent to retry — not that the link expired.</li>
+        <li>Leave 5 as a product guess cap even if Clerk later returns 429 on real mints.</li>
+      </ul>
+    </article>
+    <article class="card">
+      <h3>Do not</h3>
+      <ul class="tight">
+        <li>Set Convex 600 because Clerk dev BAPI is 100/10s.</li>
+        <li>Set Convex 5 because Clerk FAPI sign-in creation is 5/10s.</li>
+        <li>Delete local buckets and “just handle Clerk errors”.</li>
+        <li>Use Telnyx scheduled messages or a second queue for clinic 18:00.</li>
+        <li>Auto-loop <code>redeem</code> on 429 (burns the handle and the bucket).</li>
+        <li>Let Workpool parallelism 8 imply 8 SMS/s — Telnyx will queue or 429.</li>
+      </ul>
+    </article>
+  </div>
+  <p>
+    Suggested split: <strong>Ovet invents bounds for traffic vendors never see</strong>;
+    <strong>Ovet stays conservatively under documented vendor capacity for traffic they do see</strong>;
+    <strong>vendors remain the last word via 429</strong>. The 5 and 600 stay Ovet numbers.
+    They can be revised from abuse evidence, not from Clerk’s marketing table.
+  </p>
+
+  <h2>5. Convex primitives on this process</h2>
+  <p>
+    Built-in scheduled functions and built-in cron jobs are already in use.
+    Components are mounted only where the app already needs them. Several
+    popular Convex components are the wrong tool for invitation time or login guessing.
+  </p>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart TB
+  subgraph used["Used for SMS / login"]
+    RunAt["ctx.scheduler.runAt<br/>invitation + day-before reminder<br/>exact clinic-local minute"]
+    Pool["Workpool schedulingPool<br/>booking confirmation SMS<br/>cancellation ack<br/>Pending request expiry"]
+    RLComp["@convex-dev/rate-limiter<br/>loginCode 5 · loginCodes 600<br/>parentInvitations 10/org/min<br/>withdrawal 3/min"]
+    CronBuiltIn["Built-in cronJobs<br/>hourly login-code purge<br/>6h lost-job reconcile<br/>not 18:00 send"]
+  end
+  subgraph unused["Mounted, but not this process"]
+    Wf["@convex-dev/workflow<br/>anamnesis generation only"]
+    Ag["@convex-dev/agent<br/>story / reason agents only"]
+  end
+  subgraph not["Not used — and should not be, for this"]
+    CronComp["@convex-dev/crons component<br/>dynamic cron registry<br/>not mounted"]
+    TelSched["Telnyx scheduled messages<br/>second queue — rejected"]
+    HourlySend["Daily cron at 18:00 UTC<br/>would miss clinic TZ and per-visit dueAt"]
+  end
+  Visit["Visit exists"] --> Decide{"dueAt now?"}
+  Decide -->|"yes or imminent"| Dispatch["dispatch.reserve / send"]
+  Decide -->|"later"| RunAt
+  RunAt --> Dispatch
+  Decide -->|"booking confirmation"| Pool
+  Dispatch --> RLComp
+  CronBuiltIn -.->|"cleanup only"| RLComp
+  Wf -.->|"no edge"| Dispatch
+  Ag -.->|"no edge"| Dispatch
+  CronComp -.->|"no edge"| Visit
+  TelSched -.->|"no edge"| Dispatch
+  HourlySend -.->|"no edge"| Visit
+    </pre>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Primitive</th>
+        <th>Docs role</th>
+        <th>This SMS/login process</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Scheduled functions <code>runAt</code> / <code>runAfter</code></td>
+        <td>Durable per-job clock; mutations schedule atomically; actions at most once</td>
+        <td class="yes">Yes — one scheduled run per invitation or reminder at the computed local minute. This is the 18:00 / window mechanism.</td>
+      </tr>
+      <tr>
+        <td>Built-in cron jobs</td>
+        <td>Recurring sweeps; at most one run in flight; not for per-visit due times</td>
+        <td class="maybe">Yes for purge/reconcile. No for sending. A 18:00 cron would bunch every clinic into one UTC minute and ignore invitationDaysBefore / imminent.</td>
+      </tr>
+      <tr>
+        <td>Workpool</td>
+        <td>Bounded parallelism, retries, <code>onComplete</code> for actions that can fail</td>
+        <td class="yes">Yes for booking confirmation and expiry side effects. No for ordinary invitations: those must not auto-retry the non-idempotent Telnyx send via pool retries. Domain policy already owns the ten-attempt ladder.</td>
+      </tr>
+      <tr>
+        <td>Workflow</td>
+        <td>Durable multi-step, waits, retries across actions</td>
+        <td class="no">No. SMS is one send with a reservation, not a multi-step saga. Workflow is the anamnesis generator.</td>
+      </tr>
+      <tr>
+        <td>Crons component</td>
+        <td>User-defined / dynamic cron registry</td>
+        <td class="no">Not mounted. Clinic timing is data on the appointment, not a cron document.</td>
+      </tr>
+      <tr>
+        <td>Rate limiter component</td>
+        <td>Token buckets in Convex</td>
+        <td class="yes">Yes — this is how Ovet owns 5/600 and the other unauthenticated / staff flood gates.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>6. Burst at 18:00 vs provider throughput</h2>
+  <p>
+    Many invitations can be scheduled for the same clinic-local 18:00:00.000.
+    Convex will wake them together. Telnyx’s default long-code send rate is
+    0.1 messages per second per number (~6/min). Extra requests queue for up to
+    four hours, then <code>40318</code>. That is a send-plane limit. It does not
+    protect <code>redeem</code>. Workpool <code>maxParallelism: 8</code> is a
+    Convex execution cap for booking jobs, not an SMS MPS setting.
+  </p>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart TB
+  subgraph evening["Same local 18:00"]
+    N["N invitations dueAt = 18:00:00.000"]
+  end
+  N --> ConvexWake["Convex runAt fires N functions"]
+  ConvexWake --> ClerkBAPI["Clerk user get/create<br/>counts against 100/10s dev"]
+  ConvexWake --> TelnyxQ["Telnyx accept or queue<br/>0.1 MPS long code"]
+  ClerkBAPI --> OvetRL["parentInvitations 10/org/min<br/>may trip first"]
+  TelnyxQ --> Handset["Carrier delivery — later, via webhook"]
+  ConvexWake -.->|"does not wait for 18:00"| Open["Parent opens link hours later"]
+  Open --> GuessRL["5 / 600 on redeem"]
+    </pre>
+  </div>
+
+  <h2>7. Decision rule</h2>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart TD
+  Q["What is being limited?"] --> A{"Does this request<br/>call Clerk or Telnyx?"}
+  A -->|"No: guess, spent handle,<br/>expired handle, withdrawal scrape"| Ovet["Ovet number<br/>Convex rateLimiter"]
+  A -->|"Yes: mint, user create, SMS send"| V{"Is this clinic policy<br/>or vendor capacity?"}
+  V -->|"Clinic: quiet hours, 10 attempts,<br/>imminent send, consent"| Ovet2["Ovet / clinic settings"]
+  V -->|"Capacity: QPS, spend, MPS"| Vendor["Honor 429 / Retry-After<br/>optional Telnyx spend cap"]
+  Ovet --> Keep["Keep 5 and 600 here"]
+  Ovet2 --> Clock["Express with runAt + policy.ts"]
+  Vendor --> Classify["adapter.ts / future Clerk 429 class"]
+    </pre>
+  </div>
+
+  <footer>
+    Sources in this repo: <code>messaging/loginCodes.ts</code>, <code>lib/parentClerk.ts</code>,
+    <code>messaging/dispatch.ts</code>, <code>messaging/timing.ts</code>, <code>messaging/policy.ts</code>,
+    <code>messaging/telnyx.ts</code>, <code>lib/jobs.ts</code>, <code>crons.ts</code>,
+    <code>convex.config.ts</code>. Clerk BAPI/FAPI table from the in-repo clerk-backend-api skill.
+    Telnyx throughput from Telnyx messaging rate-limit docs (live profile spend not observed).
+    Convex scheduling: docs.convex.dev scheduled functions and cron jobs; components pages for workpool / workflow / crons.
+  </footer>
+</main>
+</body>
+</html>
+
